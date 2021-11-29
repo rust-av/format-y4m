@@ -1,0 +1,19 @@
+[package]
+name = "y4m"
+version = "0.1.0"
+authors = ["Stephan Vedder <stephan.vedder@gmail.com>"]
+edition = "2021"
+license = "MIT"
+description = "YUV4MPEG2 codec"
+repository = "https://github.com/rust-av/codec-y4m"
+readme = "README.md"
+keywords = ["y4m","yuv"]
+
+[dependencies]
+nom = "6.0.0"
+av-data = { version = "0.3.0" }
+av-format = "0.3"
+log = "0.4"
+
+[dev-dependencies]
+pretty_env_logger = "0.4"
