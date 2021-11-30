@@ -10,7 +10,7 @@ readme = "README.md"
 keywords = ["y4m","yuv"]
 
 [dependencies]
-nom = "6.0.0"
+nom = "7.1.0"
 av-data = { version = "0.3.0" }
 av-format = "0.3"
 log = "0.4"

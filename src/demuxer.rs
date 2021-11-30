@@ -8,7 +8,11 @@ use av_format::demuxer::{Demuxer, Event};
 use av_format::demuxer::{Descr, Descriptor};
 use av_format::error::*;
 use av_format::stream::Stream;
+use nom::bytes::complete::tag;
+use nom::bytes::complete::take_till;
 use nom::error::ErrorKind;
+use nom::multi::many0;
+use nom::sequence::terminated;
 use nom::{Err, IResult, Needed, Offset};
 use std::collections::VecDeque;
 use std::io::SeekFrom;
@@ -21,6 +25,8 @@ struct Y4MDemuxer {
 
 #[derive(Clone, Debug)]
 pub struct Y4MHeader {
+    width: u32,
+    height: u32,
 }
 
 impl Y4MDemuxer {
@@ -31,7 +37,7 @@ impl Y4MDemuxer {
 
 impl Demuxer for Y4MDemuxer {
     fn read_headers(&mut self, buf: &Box<dyn Buffered>, info: &mut GlobalInfo) -> Result<SeekFrom> {
-        match y4m_header(buf.data()) {
+        match header(buf.data()) {
             Ok((input, header)) => {
                 debug!("found header: {:?}", header);
                 let st = Stream {
@@ -81,12 +87,47 @@ impl Demuxer for Y4MDemuxer {
     }
 }
 
-named!(y4m_header<&[u8], Y4MHeader>,
-    do_parse!(
-        tag!("YUV4MPEG2 ")
-        >> (Y4MHeader {})
-    )
-);
+fn header_token(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    take_till(|c| c == b' ')(input)
+}
+
+#[allow(non_upper_case_globals)]
+static header_token_end_terminator: &[u8] = b"FRAME";
+
+pub fn header_token_end(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    tag(header_token_end_terminator)(input)
+}
+
+fn header_tokens(input: &[u8]) -> IResult<&[u8], Vec<&[u8]>> {
+    terminated(many0(header_token), header_token_end)(input)
+}
+
+fn header(input: &[u8]) -> IResult<&[u8], Y4MHeader> {
+    let (input, _) = tag("YUV4MPEG2 ")(input)?;
+    let (input, tokens) = header_tokens(input)?;
+
+    let w: u32 = 0;
+    let h: u32 = 0;
+    for token in tokens {
+        match token[0] {
+            b'W' => {
+                //TODO parse width
+            }
+            b'H' => {
+                //TODO parse height
+            }
+            _ => {}
+        }
+    }
+
+    Ok((
+        input,
+        Y4MHeader {
+            width: w,
+            height: h,
+        },
+    ))
+}
 
 struct Des {
     d: Descr,
@@ -100,8 +141,8 @@ impl Descriptor for Des {
         &self.d
     }
     fn probe(&self, data: &[u8]) -> u8 {
-        match y4m_header(&data[..=32]) {
-            Ok(_) => 32,
+        match header(&data[..=10]) {
+            Ok(_) => 10,
             _ => 0,
         }
     }
