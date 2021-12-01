@@ -10,6 +10,7 @@ use av_format::error::*;
 use av_format::stream::Stream;
 use nom::bytes::complete::tag;
 use nom::bytes::complete::take_till;
+use nom::bytes::complete::take_till1;
 use nom::error::ErrorKind;
 use nom::multi::many0;
 use nom::sequence::terminated;
@@ -25,8 +26,8 @@ struct Y4MDemuxer {
 
 #[derive(Clone, Debug)]
 pub struct Y4MHeader {
-    width: u32,
-    height: u32,
+    width: usize,
+    height: usize,
 }
 
 impl Y4MDemuxer {
@@ -88,43 +89,44 @@ impl Demuxer for Y4MDemuxer {
 }
 
 fn header_token(input: &[u8]) -> IResult<&[u8], &[u8]> {
-    take_till(|c| c == b' ')(input)
-}
-
-#[allow(non_upper_case_globals)]
-static header_token_end_terminator: &[u8] = b"FRAME";
-
-pub fn header_token_end(input: &[u8]) -> IResult<&[u8], &[u8]> {
-    tag(header_token_end_terminator)(input)
-}
-
-fn header_tokens(input: &[u8]) -> IResult<&[u8], Vec<&[u8]>> {
-    terminated(many0(header_token), header_token_end)(input)
+    take_till1(|c| c == b' ')(input)
 }
 
 fn header(input: &[u8]) -> IResult<&[u8], Y4MHeader> {
     let (input, _) = tag("YUV4MPEG2 ")(input)?;
-    let (input, tokens) = header_tokens(input)?;
+    let mut width: usize = 0;
+    let mut height: usize = 0;
 
-    let w: u32 = 0;
-    let h: u32 = 0;
-    for token in tokens {
-        match token[0] {
-            b'W' => {
-                //TODO parse width
+    loop {
+        let (input, token) = header_token(input)?;
+        let token_str = std::str::from_utf8(&token).unwrap();
+        let (id, val) = token_str.split_at(1);
+
+        match id.chars().next().unwrap() {
+            'W' => {
+                if let Ok(w) = val.parse::<usize>() {
+                    width = w;
+                }
             }
-            b'H' => {
-                //TODO parse height
+            'H' => {
+                if let Ok(h) = val.parse::<usize>() {
+                    height = h;
+                }
             }
             _ => {}
+        }
+
+        if input[0] == b'\n'
+        {
+            break;
         }
     }
 
     Ok((
         input,
         Y4MHeader {
-            width: w,
-            height: h,
+            width: width,
+            height: height,
         },
     ))
 }
