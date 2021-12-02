@@ -51,8 +51,8 @@ impl Demuxer for Y4MDemuxer {
                         delay: 0,
                         convergence_window: 0,
                         kind: Some(MediaKind::Video(VideoInfo {
-                            width: 800,
-                            height: 600,
+                            width: header.width,
+                            height: header.height,
                             format: None,
                         })),
                     },
@@ -61,7 +61,6 @@ impl Demuxer for Y4MDemuxer {
                     timebase: Rational64::new(1, 1000 * 1000 * 1000),
                     user_private: None,
                 };
-                //TODO: read more than just the magic/tag at the start
                 self.header = Some(header);
                 info.add_stream(st);
                 Ok(SeekFrom::Current(buf.data().offset(input) as i64))
@@ -89,16 +88,17 @@ impl Demuxer for Y4MDemuxer {
 }
 
 fn header_token(input: &[u8]) -> IResult<&[u8], &[u8]> {
-    take_till1(|c| c == b' ')(input)
+    take_till(|c| c == b' ' || c == b'\n')(input)
 }
 
 fn header(input: &[u8]) -> IResult<&[u8], Y4MHeader> {
-    let (input, _) = tag("YUV4MPEG2 ")(input)?;
+    let (mut i, _) = tag("YUV4MPEG2 ")(input)?;
     let mut width: usize = 0;
     let mut height: usize = 0;
 
+
     loop {
-        let (input, token) = header_token(input)?;
+        let (ii, token) = header_token(i)?;
         let token_str = std::str::from_utf8(&token).unwrap();
         let (id, val) = token_str.split_at(1);
 
@@ -116,10 +116,11 @@ fn header(input: &[u8]) -> IResult<&[u8], Y4MHeader> {
             _ => {}
         }
 
-        if input[0] == b'\n'
+        if ii[0] == b'\n'
         {
             break;
         }
+        i = &ii[1..];
     }
 
     Ok((
