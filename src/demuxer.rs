@@ -1,7 +1,5 @@
-use av_data::packet::Packet;
 use av_data::params::{CodecParams, MediaKind, VideoInfo};
 use av_data::rational::Rational64;
-use av_data::timeinfo::TimeInfo;
 use av_format::buffer::Buffered;
 use av_format::common::GlobalInfo;
 use av_format::demuxer::{Demuxer, Event};
@@ -10,11 +8,8 @@ use av_format::error::*;
 use av_format::stream::Stream;
 use nom::bytes::complete::tag;
 use nom::bytes::complete::take_till;
-use nom::bytes::complete::take_till1;
-use nom::error::ErrorKind;
-use nom::multi::many0;
-use nom::sequence::terminated;
-use nom::{Err, IResult, Needed, Offset};
+use nom::combinator::map_res;
+use nom::{IResult, Offset};
 use std::collections::VecDeque;
 use std::io::SeekFrom;
 
@@ -24,7 +19,7 @@ struct Y4MDemuxer {
     queue: VecDeque<Event>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct Y4MHeader {
     width: usize,
     height: usize,
@@ -87,49 +82,33 @@ impl Demuxer for Y4MDemuxer {
     }
 }
 
-fn header_token(input: &[u8]) -> IResult<&[u8], &[u8]> {
-    take_till(|c| c == b' ' || c == b'\n')(input)
+fn from_utf8(input: &[u8]) -> std::result::Result<&str, std::str::Utf8Error> {
+    std::str::from_utf8(input)
+}
+
+fn header_token(input: &[u8]) -> IResult<&[u8], &str> {
+    map_res(take_till(|c| c == b' '), from_utf8)(input).map(|(i, token_str)| {
+        // Remove space from input
+        (&i[1..], token_str)
+    })
 }
 
 fn header(input: &[u8]) -> IResult<&[u8], Y4MHeader> {
+    let mut header = Y4MHeader::default();
     let (mut i, _) = tag("YUV4MPEG2 ")(input)?;
-    let mut width: usize = 0;
-    let mut height: usize = 0;
-
 
     loop {
         let (ii, token) = header_token(i)?;
-        let token_str = std::str::from_utf8(&token).unwrap();
-        let (id, val) = token_str.split_at(1);
-
-        match id.chars().next().unwrap() {
-            'W' => {
-                if let Ok(w) = val.parse::<usize>() {
-                    width = w;
-                }
-            }
-            'H' => {
-                if let Ok(h) = val.parse::<usize>() {
-                    height = h;
-                }
-            }
-            _ => {}
+        let (id, val) = token.split_at(1);
+        i = ii;
+        match id {
+            "W" => header.width = val.parse::<usize>().unwrap_or(0),
+            "H" => header.height = val.parse::<usize>().unwrap_or(0),
+            _ => break,
         }
-
-        if ii[0] == b'\n'
-        {
-            break;
-        }
-        i = &ii[1..];
     }
 
-    Ok((
-        input,
-        Y4MHeader {
-            width: width,
-            height: height,
-        },
-    ))
+    Ok((i, header))
 }
 
 struct Des {
